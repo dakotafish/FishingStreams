@@ -1,0 +1,43 @@
+# macOS
+.DS_Store
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+build/
+dist/
+.eggs/
+
+# Virtual environments
+venv/
+.venv/
+env/
+.env
+
+# Environment / secrets (defensive — no .env files exist today, but ignore by default)
+*.env
+.env.*
+!.env.example
+secrets.*
+*.key
+*.pem
+
+# IDE / editor
+.idea/
+!.idea/.gitignore
+.vscode/
+*.swp
+*.swo
+
+# Claude Code local-only state (per-user, contains absolute paths)
+**/.claude/settings.local.json
+
+# Logs and runtime output
+logs/
+*.log
+
+# Local scratch / temp directories
+tmp/
+*.tmp

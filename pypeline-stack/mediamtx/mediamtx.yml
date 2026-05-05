@@ -1,0 +1,42 @@
+logLevel: debug
+logDestinations: [stdout, file]
+logFile: /logs/mediamtx.log
+
+# Allow unauthenticated access for development.
+authMethod: internal
+authInternalUsers:
+  - user: any
+    pass: any
+    ips: []
+    permissions:
+      - action: publish
+        path: ""
+      - action: read
+        path: ""
+      - action: api
+        path: ""
+
+api: yes
+apiAddress: :8888
+
+srt: yes
+srtAddress: :8890
+
+rtmp: no
+
+hls: yes
+hlsAddress: :8889
+hlsAlwaysRemux: yes
+hlsVariant: fmp4
+hlsSegmentDuration: 2s
+hlsSegmentMaxSize: 50MB
+
+webrtc: no
+rtsp: no
+
+paths:
+  boat1:
+    # Phone publishes here over SRT.
+    # No passphrase for dev — add srtPublishPassphrase in production.
+  boat1-processed:
+    # Pypeline publishes here after adding the SVG overlay; clients consume this path.

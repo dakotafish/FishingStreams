@@ -1,0 +1,57 @@
+# Production overlay pipeline for the boat1 stream.
+# Mirrors the original reference/original_overlay_pipeline.py 1:1.
+# Edit any sinks.<name>.enabled flag to disable that branch without code changes.
+
+source:
+  uri: srt://mediamtx:8890?streamid=read:boat1
+  latency_ms: 200
+  wait_for:
+    api_url: http://mediamtx:8888
+    path_name: boat1
+    poll_interval_seconds: 2
+    request_timeout_seconds: 2
+    timeout_seconds: null   # wait forever, like the original
+
+video:
+  overlay_path: /overlays/placeholder.svg
+  encoder:
+    bitrate_kbps: 5000
+    keyframe_interval: 30
+    bframes: 0
+    tune: zerolatency
+    speed_preset: veryfast
+
+mux:
+  alignment: 7
+
+sinks:
+  default_queue:
+    max_buffers: 0
+    max_time_seconds: 10
+    max_bytes: 16777216    # 16 MiB
+
+  srt_publisher:
+    enabled: true
+    uri: srt://mediamtx:8890?streamid=publish:boat1-processed
+    latency_ms: 200
+
+  file_recorder:
+    enabled: true
+    location: /logs/output.ts
+
+  srt_listener:
+    enabled: true
+    port: 8891
+    stream_id: boat1-processed
+    latency_ms: 2000
+    wait_for_connection: false
+
+  rtsp_bridge:
+    enabled: true
+    mount_path: /boat1-processed
+    appsink:
+      max_buffers: 200
+      drop: false
+
+rtsp_server:
+  port: 8554

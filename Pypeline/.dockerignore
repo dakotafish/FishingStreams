@@ -1,0 +1,25 @@
+# Local dev artifacts — never ship inside the image.
+venv/
+.venv/
+__pycache__/
+**/__pycache__/
+*.pyc
+*.pyo
+
+# IDE / git noise
+.idea/
+.vscode/
+.git/
+.gitignore
+
+# Reference material kept around for diffing; not needed at runtime.
+reference/
+
+# Logs and build outputs.
+logs/
+build/
+dist/
+*.egg-info/
+
+# Plans / Claude state not part of the runtime image.
+.claude/

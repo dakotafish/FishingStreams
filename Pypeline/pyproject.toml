@@ -1,0 +1,21 @@
+[project]
+name = "pypeline"
+version = "0.1.0"
+description = "Configurable, class-based GStreamer pipelines for fishing-stream overlays."
+requires-python = ">=3.10"
+dependencies = [
+    "pydantic>=2,<3",
+    "pyyaml>=6,<7",
+    # PyGObject is the GStreamer Python binding. It requires native libs
+    # (gobject-introspection, gstreamer-1.0, gst-rtsp-server). It is
+    # installed in the runtime Docker image; on a dev host you can skip
+    # it and still validate config models / JSON schema.
+    "PyGObject>=3.42",
+]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["pypeline*"]
