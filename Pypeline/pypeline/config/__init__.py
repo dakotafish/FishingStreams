@@ -2,6 +2,7 @@ from .audio import AudioBranchConfig
 from .mux import MuxConfig
 from .pipeline import PipelineConfig
 from .rtsp import RtspServerConfig
+from .scoreboard import AnglerEntry, ScoreboardConfig
 from .sinks import (
     FileRecorderSinkConfig,
     RtspBridgeAppsinkConfig,
@@ -12,9 +13,10 @@ from .sinks import (
     TeeQueueConfig,
 )
 from .source import MediaMtxWaitConfig, SourceConfig
-from .video import EncoderConfig, VideoBranchConfig
+from .video import EncoderConfig, VideoDecodeBranchConfig, VideoEncodeBranchConfig
 
 __all__ = [
+    "AnglerEntry",
     "AudioBranchConfig",
     "EncoderConfig",
     "FileRecorderSinkConfig",
@@ -24,10 +26,12 @@ __all__ = [
     "RtspBridgeAppsinkConfig",
     "RtspBridgeSinkConfig",
     "RtspServerConfig",
+    "ScoreboardConfig",
     "SinksConfig",
     "SourceConfig",
     "SrtListenerSinkConfig",
     "SrtPublisherSinkConfig",
     "TeeQueueConfig",
-    "VideoBranchConfig",
+    "VideoDecodeBranchConfig",
+    "VideoEncodeBranchConfig",
 ]

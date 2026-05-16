@@ -7,9 +7,10 @@ from pydantic import BaseModel, ConfigDict, Field
 from .audio import AudioBranchConfig
 from .mux import MuxConfig
 from .rtsp import RtspServerConfig
+from .scoreboard import ScoreboardConfig
 from .sinks import SinksConfig
 from .source import SourceConfig
-from .video import VideoBranchConfig
+from .video import VideoDecodeBranchConfig, VideoEncodeBranchConfig
 
 
 class PipelineConfig(BaseModel):
@@ -18,7 +19,9 @@ class PipelineConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     source: SourceConfig
-    video: VideoBranchConfig
+    video_decode: VideoDecodeBranchConfig = Field(default_factory=VideoDecodeBranchConfig)
+    video_encode: VideoEncodeBranchConfig
+    scoreboard: ScoreboardConfig = Field(default_factory=ScoreboardConfig)
     audio: AudioBranchConfig = Field(default_factory=AudioBranchConfig)
     mux: MuxConfig = Field(default_factory=MuxConfig)
     sinks: SinksConfig

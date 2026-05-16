@@ -50,8 +50,27 @@ class EncoderConfig(BaseModel):
     )
 
 
-class VideoBranchConfig(BaseModel):
-    """H.265 → H.264 transcode with an SVG overlay in the middle."""
+class VideoDecodeBranchConfig(BaseModel):
+    """H.265 decode → raw BGRA. Output format is fixed by the branch.
+
+    The branch outputs BGRA because cairooverlay (the next stage) requires
+    ``video/x-raw,format=BGRA`` on little-endian. No tunables today; exists
+    as a named extension point so future decode-side knobs (HW decode,
+    deinterlace, color range) have an obvious home.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class VideoEncodeBranchConfig(BaseModel):
+    """Raw video → H.264 with an SVG overlay in the middle.
+
+    Element chain (inside the branch):
+
+        videoconvert → rsvgoverlay → videoconvert →
+        capsfilter(I420) → x264enc → h264parse →
+        capsfilter(byte-stream/au) → queue
+    """
 
     model_config = ConfigDict(extra="forbid")
 

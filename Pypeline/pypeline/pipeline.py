@@ -11,13 +11,15 @@ from .branches import (
     AacPassthroughBranch,
     Branch,
     FileRecorderSink,
-    H265ToH264OverlayBranch,
     MpegTsMuxBranch,
     RtspBridgeSink,
+    ScoreboardOverlayBranch,
     SrtListenerSink,
     SrtMpegTsSource,
     SrtPublisherSink,
     TeeFanout,
+    VideoDecodeBranch,
+    VideoEncodeBranch,
 )
 from .config import PipelineConfig
 from .mediamtx import MediaMtxWaiter
@@ -39,7 +41,9 @@ class OverlayPipeline:
         self.main_loop = GLib.MainLoop()
 
         self.source: Optional[SrtMpegTsSource] = None
-        self.video: Optional[H265ToH264OverlayBranch] = None
+        self.video_decode: Optional[VideoDecodeBranch] = None
+        self.scoreboard: Optional[ScoreboardOverlayBranch] = None
+        self.video_encode: Optional[VideoEncodeBranch] = None
         self.audio: Optional[AacPassthroughBranch] = None
         self.mux: Optional[MpegTsMuxBranch] = None
         self.tee: Optional[TeeFanout] = None
@@ -52,7 +56,9 @@ class OverlayPipeline:
         c = self.config
 
         self.source = SrtMpegTsSource(c.source)
-        self.video = H265ToH264OverlayBranch(c.video)
+        self.video_decode = VideoDecodeBranch(c.video_decode)
+        self.scoreboard = ScoreboardOverlayBranch(c.scoreboard)
+        self.video_encode = VideoEncodeBranch(c.video_encode)
         self.audio = AacPassthroughBranch(c.audio)
         self.mux = MpegTsMuxBranch(c.mux)
         self.tee = TeeFanout(c.sinks.default_queue)
@@ -72,7 +78,9 @@ class OverlayPipeline:
 
         non_sink_branches: list[Branch] = [
             self.source,
-            self.video,
+            self.video_decode,
+            self.scoreboard,
+            self.video_encode,
             self.audio,
             self.mux,
             self.tee,
@@ -93,8 +101,12 @@ class OverlayPipeline:
 
         # Phase 4: inter-branch static links.
         ok = Gst.PadLinkReturn.OK
-        if self.video.output_pad.link(self.mux.request_video_pad()) != ok:
-            raise RuntimeError("video → mux link failed")
+        if self.video_decode.output_pad.link(self.scoreboard.input_pad) != ok:
+            raise RuntimeError("video_decode → scoreboard link failed")
+        if self.scoreboard.output_pad.link(self.video_encode.input_pad) != ok:
+            raise RuntimeError("scoreboard → video_encode link failed")
+        if self.video_encode.output_pad.link(self.mux.request_video_pad()) != ok:
+            raise RuntimeError("video_encode → mux link failed")
         if self.audio.output_pad.link(self.mux.request_audio_pad()) != ok:
             raise RuntimeError("audio → mux link failed")
         if self.mux.output_pad.link(self.tee.input_pad) != ok:
@@ -107,8 +119,8 @@ class OverlayPipeline:
         self.source.on_audio_pad(self._link_audio_pad)
 
     def _link_video_pad(self, pad: Gst.Pad) -> None:
-        assert self.video is not None
-        target = self.video.input_pad
+        assert self.video_decode is not None
+        target = self.video_decode.input_pad
         self._link_dynamic(pad, target, "video")
 
     def _link_audio_pad(self, pad: Gst.Pad) -> None:

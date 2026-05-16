@@ -1,8 +1,8 @@
 # FishingStreams — Project Map
 
 Live video from a phone (Moblin/Larix → SRT) is ingested by **MediaMTX**, transcoded
-and overlaid by a **GStreamer** pipeline (H.265 → H.264 + SVG overlay), then fanned
-out to OBS, browser HLS, and an RTSP diagnostic endpoint.
+and overlaid by a **GStreamer** pipeline (H.265 → H.264 + SVG overlay + scrolling
+Cairo scoreboard), then fanned out to OBS, browser HLS, and an RTSP diagnostic endpoint.
 
 The repo contains two generations of the same pipeline plus a deployment stack:
 
@@ -48,30 +48,39 @@ flowchart LR
             subgraph PypConfig["config/ (Pydantic models)"]
                 CfgPipeline["pipeline.py (root + from_yaml)"]
                 CfgSource["source.py"]
-                CfgVideo["video.py"]
+                CfgVideo["video.py (Decode + Encode configs)"]
+                CfgScoreboard["scoreboard.py"]
                 CfgAudio["audio.py"]
                 CfgMux["mux.py"]
                 CfgSinks["sinks.py"]
                 CfgRtsp["rtsp.py"]
-                CfgPipeline --> CfgSource & CfgVideo & CfgAudio & CfgMux & CfgSinks & CfgRtsp
+                CfgPipeline --> CfgSource & CfgVideo & CfgScoreboard & CfgAudio & CfgMux & CfgSinks & CfgRtsp
             end
 
             subgraph PypBranches["branches/ (Branch classes)"]
                 BrBase["base.py (Branch ABC)"]
                 BrSource["source.py (SrtMpegTsSource)"]
-                BrVideo["video.py (H265ToH264OverlayBranch)"]
+                BrVideo["video.py (VideoDecodeBranch + VideoEncodeBranch)"]
+                BrScoreboard["scoreboard.py (ScoreboardOverlayBranch)"]
                 BrAudio["audio.py (AacPassthroughBranch)"]
                 BrMux["mux.py (MpegTsMuxBranch)"]
                 BrTee["tee.py (TeeFanout)"]
                 BrSinks["sinks.py (4 sink classes)"]
-                BrSource & BrVideo & BrAudio & BrMux & BrTee & BrSinks --> BrBase
+                BrSource & BrVideo & BrScoreboard & BrAudio & BrMux & BrTee & BrSinks --> BrBase
             end
 
-            PypPipeline --> BrSource & BrVideo & BrAudio & BrMux & BrTee & BrSinks
+            subgraph PypOverlays["overlays/ (pure-Python renderers)"]
+                OvScoreboard["scoreboard_renderer.py"]
+            end
+
+            PypPipeline --> BrSource & BrVideo & BrScoreboard & BrAudio & BrMux & BrTee & BrSinks
             PypPipeline --> PypMtx --> CfgSource
             PypPipeline --> PypRtsp --> CfgRtsp
             BrSource --> CfgSource
             BrVideo --> CfgVideo
+            BrScoreboard --> CfgScoreboard
+            BrScoreboard --> OvScoreboard
+            OvScoreboard --> CfgScoreboard
             BrAudio --> CfgAudio
             BrMux --> CfgMux
             BrTee --> CfgSinks
@@ -217,9 +226,10 @@ so YAML typos raise at validation time rather than being silently ignored.
 | Path | Purpose |
 |---|---|
 | `__init__.py` | Re-exports the model classes for convenient imports. |
-| `pipeline.py` | `PipelineConfig` — the root model. Composes `SourceConfig`, `VideoBranchConfig`, `AudioBranchConfig`, `MuxConfig`, `SinksConfig`, and `RtspServerConfig`. Provides the `from_yaml(path)` classmethod (load + validate). |
+| `pipeline.py` | `PipelineConfig` — the root model. Composes `SourceConfig`, `VideoDecodeBranchConfig`, `VideoEncodeBranchConfig`, `ScoreboardConfig`, `AudioBranchConfig`, `MuxConfig`, `SinksConfig`, and `RtspServerConfig`. Provides the `from_yaml(path)` classmethod (load + validate). |
 | `source.py` | `SourceConfig` (SRT URI, latency) and `MediaMtxWaitConfig` (api_url, path_name, poll/timeout/request-timeout settings). |
-| `video.py` | `VideoBranchConfig` (overlay path, raw format, H.264 stream-format and alignment, h264parse `config-interval`) and `EncoderConfig` (x264enc bitrate, GOP, B-frames, `tune`, `speed-preset`). Field docstrings record the *why* — e.g. why I420 is forced and why `byte-stream + au` is required for the mux. |
+| `video.py` | `VideoDecodeBranchConfig` (currently empty; output is fixed BGRA), `VideoEncodeBranchConfig` (overlay path, raw format, H.264 stream-format and alignment, h264parse `config-interval`), and `EncoderConfig` (x264enc bitrate, GOP, B-frames, `tune`, `speed-preset`). Field docstrings record the *why* — e.g. why I420 is forced and why `byte-stream + au` is required for the mux. |
+| `scoreboard.py` | `ScoreboardConfig` (enabled flag, scroll speed, strip geometry, font, colors) and `AnglerEntry` (rank/name/points). The angler list lives in YAML; the renderer in `overlays/scoreboard_renderer.py` consumes this config. |
 | `audio.py` | `AudioBranchConfig` — currently empty model; passthrough has no tunables. |
 | `mux.py` | `MuxConfig` — `alignment` (defaults to 7 packets so `mpegtsmux` emits 1316-byte buffers, matching SRT's MTU). |
 | `sinks.py` | `SinksConfig` — container for all four sink configs plus `TeeQueueConfig`. Each sink has its own model with an `enabled` flag: `SrtPublisherSinkConfig`, `FileRecorderSinkConfig`, `SrtListenerSinkConfig`, `RtspBridgeSinkConfig` (which nests `RtspBridgeAppsinkConfig`). |
@@ -237,11 +247,24 @@ omit `input_pad`; sinks omit `output_pad`; the mux uses request pads instead.
 | `__init__.py` | Re-exports the branch classes for `pipeline.py`. |
 | `base.py` | `Branch` (ABC) — defines lifecycle, owns the element list, parents to a `Gst.Pipeline` in `add_to()`. Plus `make_element(factory, name)` which raises a *named* error when a plugin is missing (the MVP's generic "failed to create an element" gave no clue which one). |
 | `source.py` | `SrtMpegTsSource` — `srtsrc` → `tsdemux`. Exposes `on_video_pad()` / `on_audio_pad()` so the orchestrator can register pad callbacks; central `pad-added` handler dispatches on caps media-type. |
-| `video.py` | `H265ToH264OverlayBranch` — the full transcode chain: `h265parse → avdec_h265 → videoconvert → rsvgoverlay → videoconvert → capsfilter(I420) → x264enc → h264parse → capsfilter(byte-stream/au) → queue`. |
+| `video.py` | `VideoDecodeBranch` (`h265parse → avdec_h265 → videoconvert → capsfilter(BGRA)`) and `VideoEncodeBranch` (`videoconvert → rsvgoverlay → videoconvert → capsfilter(I420) → x264enc → h264parse → capsfilter(byte-stream/au) → queue`). Split from a single class so the scoreboard cairo overlay can sit between the two without coupling decode and encode. |
+| `scoreboard.py` | `ScoreboardOverlayBranch` — single-element branch wrapping `cairooverlay`. GStreamer glue only; delegates pixel work to `ScoreboardRenderer` in `overlays/`. Advances scroll position from the buffer timestamp so scroll speed is frame-rate-independent. |
 | `audio.py` | `AacPassthroughBranch` — `aacparse → queue`. No decode/re-encode. |
 | `mux.py` | `MpegTsMuxBranch` — wraps `mpegtsmux`. Exposes `request_video_pad()` / `request_audio_pad()` that allocate `sink_%d` request pads. |
 | `tee.py` | `TeeFanout` — wraps `tee`. `attach_sink(sink)` lazily creates a queue per sink (with `TeeQueueConfig` limits) so a slow sink can't back-pressure the others. |
 | `sinks.py` | The four terminal sinks: `SrtPublisherSink` (`srtsink` → MediaMTX), `FileRecorderSink` (`filesink` for diagnostic `.ts`), `SrtListenerSink` (SRT in listener mode for direct OBS connection), `RtspBridgeSink` (`appsink` whose `new-sample` callback pushes buffers into the in-process `RtspServer`). |
+
+#### `Pypeline/pypeline/overlays/`
+
+Pure-Python Cairo renderers. **No GStreamer imports** — the renderer modules
+are independently importable and unit-testable with `pycairo` alone. Branches
+under `branches/` own the GStreamer plumbing and call into these renderers
+from the cairooverlay `draw` signal.
+
+| Path | Purpose |
+|---|---|
+| `__init__.py` | Empty package marker. |
+| `scoreboard_renderer.py` | `ScoreboardRenderer` — draws a horizontally scrolling scoreboard strip onto a `cairo.Context`. Stateless given a `ScoreboardState(x_offset)` snapshot, so the same inputs always produce the same output. |
 
 ### `Pypeline/.claude/`, `Pypeline/.idea/`, `Pypeline/venv/`, `Pypeline/__pycache__/`
 Local IDE/dev artifacts. Not used by Docker (excluded via `.dockerignore`).

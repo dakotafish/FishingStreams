@@ -1,6 +1,6 @@
 # Production overlay pipeline for the boat1 stream.
-# Mirrors the original reference/original_overlay_pipeline.py 1:1.
-# Edit any sinks.<name>.enabled flag to disable that branch without code changes.
+# Edit any sinks.<name>.enabled or scoreboard.enabled flag to disable that
+# branch / overlay without code changes.
 
 source:
   uri: srt://mediamtx:8890?streamid=read:boat1
@@ -12,7 +12,7 @@ source:
     request_timeout_seconds: 2
     timeout_seconds: null   # wait forever, like the original
 
-video:
+video_encode:
   overlay_path: /overlays/placeholder.svg
   encoder:
     bitrate_kbps: 5000
@@ -20,6 +20,32 @@ video:
     bframes: 0
     tune: zerolatency
     speed_preset: veryfast
+
+scoreboard:
+  enabled: true
+  scroll_speed_px_per_sec: 120.0
+  strip_height_px: 60
+  font_size_pt: 32.0
+  font_family: "DejaVu Sans"
+  background_alpha: 0.65
+  entry_separator: "   |   "
+  text_color_rgb: [1.0, 1.0, 1.0]
+  anglers:
+    - rank: 1
+      name: "D. Johnson"
+      points: 22
+    - rank: 2
+      name: "E. Harold"
+      points: 20
+    - rank: 3
+      name: "M. Tate"
+      points: 18
+    - rank: 4
+      name: "C. Vega"
+      points: 15
+    - rank: 5
+      name: "A. Shields"
+      points: 12
 
 mux:
   alignment: 7
