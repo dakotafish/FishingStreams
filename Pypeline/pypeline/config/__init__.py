@@ -1,4 +1,5 @@
 from .audio import AudioBranchConfig
+from .browser_overlay import BrowserOverlayConfig
 from .mux import MuxConfig
 from .pipeline import PipelineConfig
 from .rtsp import RtspServerConfig
@@ -18,6 +19,7 @@ from .video import EncoderConfig, VideoDecodeBranchConfig, VideoEncodeBranchConf
 __all__ = [
     "AnglerEntry",
     "AudioBranchConfig",
+    "BrowserOverlayConfig",
     "EncoderConfig",
     "FileRecorderSinkConfig",
     "MediaMtxWaitConfig",

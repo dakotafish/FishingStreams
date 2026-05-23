@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html, body { background: #00ff00; width: 100%; height: 100%; display: flex; align-items: flex-start; justify-content: flex-end; padding: 24px; }
+.panel {
+  background: #111;
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 12px;
+  padding: 14px 24px 18px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+.title {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-size: 18px;
+  font-weight: 500;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: rgba(255,255,255,0.45);
+}
+
+.slots { display: flex; gap: 18px; align-items: center; }
+
+.slot {
+  position: relative;
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  background: #1a1a1a;
+  border: 2px solid rgba(255,255,255,0.08);
+  transition: background 0.4s ease, border-color 0.4s ease, box-shadow 0.4s ease;
+  overflow: visible;
+}
+
+.slot.filled {
+  background: rgba(232,160,32,0.10);
+  border-color: rgba(232,160,32,0.55);
+  box-shadow: 0 0 14px rgba(232,160,32,0.45), 0 0 4px rgba(232,160,32,0.75);
+}
+
+.fish {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 30px;
+  height: 15px;
+  color: #e8a020;
+  opacity: 0;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  filter: drop-shadow(0 0 3px rgba(232,160,32,0.5));
+}
+
+.slot.filled .fish { opacity: 1; }
+
+.slot.jumping .fish {
+  animation: jumpIn 720ms cubic-bezier(0.34, 1.20, 0.64, 1) forwards;
+}
+
+@keyframes jumpIn {
+  0%   { transform: translate(-20%, 220%) rotate(-12deg); opacity: 0; }
+  15%  { opacity: 1; }
+  40%  { transform: translate(-80%, -200%) rotate(-30deg); opacity: 1; }
+  65%  { transform: translate(-50%, -30%) rotate(-6deg) scale(1.12, 0.88); opacity: 1; }
+  82%  { transform: translate(-50%, -50%) rotate(0deg)  scale(0.95, 1.06); opacity: 1; }
+  100% { transform: translate(-50%, -50%) rotate(0deg)  scale(1.00, 1.00); opacity: 1; }
+}
+
+.ripple {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  border: 2px solid rgba(232,160,32,0.7);
+  transform: translate(-50%, -50%) scale(0.5);
+  opacity: 0;
+  pointer-events: none;
+}
+
+.slot.jumping .ripple {
+  animation: ripple 480ms ease-out 430ms forwards;
+}
+
+@keyframes ripple {
+  0%   { transform: translate(-50%, -50%) scale(0.5); opacity: 0; }
+  20%  { opacity: 0.6; }
+  100% { transform: translate(-50%, -50%) scale(1.7); opacity: 0; }
+}
+
+.slot.leaving .fish {
+  animation: swimOut 420ms ease-in forwards;
+}
+
+@keyframes swimOut {
+  0%   { transform: translate(-50%, -50%) rotate(0deg);   opacity: 1; }
+  100% { transform: translate(-50%,  120%) rotate(15deg); opacity: 0; }
+}
+</style>
+</head>
+<body>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="fish" viewBox="0 0 64 32">
+    <path
+      d="M 4 6
+         Q 12 9, 14 14
+         Q 22 4, 40 6
+         Q 54 8, 60 16
+         Q 54 24, 40 26
+         Q 22 28, 14 18
+         Q 12 23, 4 26
+         L 10 16
+         Z"
+      fill="currentColor"/>
+    <circle cx="52" cy="13.5" r="1.5" fill="#1a1a1a"/>
+  </symbol>
+</svg>
+
+<div class="panel">
+  <div class="title">Catch Count</div>
+  <div class="slots">
+    <div class="slot" id="s1"><span class="ripple"></span><svg class="fish"><use href="#fish"/></svg></div>
+    <div class="slot" id="s2"><span class="ripple"></span><svg class="fish"><use href="#fish"/></svg></div>
+    <div class="slot" id="s3"><span class="ripple"></span><svg class="fish"><use href="#fish"/></svg></div>
+    <div class="slot" id="s4"><span class="ripple"></span><svg class="fish"><use href="#fish"/></svg></div>
+    <div class="slot" id="s5"><span class="ripple"></span><svg class="fish"><use href="#fish"/></svg></div>
+  </div>
+</div>
+
+<script>
+const SLOT_COUNT = 5;
+const slots = Array.from({ length: SLOT_COUNT }, (_, i) =>
+  document.getElementById('s' + (i + 1))
+);
+
+let prevCount = null;
+
+function clampCount(c) {
+  c = Math.floor(Number(c) || 0);
+  if (c < 0) c = 0;
+  if (c > SLOT_COUNT) c = SLOT_COUNT;
+  return c;
+}
+
+function setInitial(count) {
+  for (let i = 0; i < SLOT_COUNT; i++) {
+    slots[i].classList.toggle('filled', i < count);
+    slots[i].classList.remove('jumping', 'leaving');
+  }
+}
+
+function jumpIn(slot) {
+  slot.classList.remove('leaving', 'filled');
+  // restart animation cleanly even if class still set somehow
+  slot.classList.remove('jumping');
+  void slot.offsetWidth;
+  slot.classList.add('jumping');
+  // Border + glow ramp up at landing (~60% through 720ms)
+  setTimeout(() => slot.classList.add('filled'), 430);
+  setTimeout(() => slot.classList.remove('jumping'), 720);
+}
+
+function swimOut(slot) {
+  slot.classList.remove('jumping');
+  slot.classList.remove('filled');
+  slot.classList.remove('leaving');
+  void slot.offsetWidth;
+  slot.classList.add('leaving');
+  setTimeout(() => slot.classList.remove('leaving'), 420);
+}
+
+function handleCount(rawCount) {
+  const newCount = clampCount(rawCount);
+  if (prevCount === null) {
+    setInitial(newCount);
+  } else if (newCount > prevCount) {
+    for (let i = prevCount; i < newCount; i++) {
+      const idx = i;
+      setTimeout(() => jumpIn(slots[idx]), (i - prevCount) * 150);
+    }
+  } else if (newCount < prevCount) {
+    for (let i = newCount; i < prevCount; i++) {
+      swimOut(slots[i]);
+    }
+  }
+  prevCount = newCount;
+}
+
+async function poll() {
+  try {
+    const res = await fetch('http://143.198.8.166/api/count');
+    const data = await res.json();
+    handleCount(data.count);
+  } catch (e) {}
+}
+poll();
+setInterval(poll, 3000);
+</script>
+</body>
+</html>

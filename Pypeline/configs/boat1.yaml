@@ -47,6 +47,13 @@ scoreboard:
       name: "A. Shields"
       points: 12
 
+browser_overlay:
+  enabled: true              # opt-in; flip to true to composite the browser overlay
+  display_name: ":99"          # must match Xvfb in Pypeline/supervisord.conf
+  framerate: 30
+  capture_endx: 1919           # width  - 1
+  capture_endy: 1079           # height - 1
+
 mux:
   alignment: 7
 

@@ -10,6 +10,8 @@ from gi.repository import GLib, Gst
 from .branches import (
     AacPassthroughBranch,
     Branch,
+    BrowserOverlaySourceBranch,
+    CompositorBranch,
     FileRecorderSink,
     MpegTsMuxBranch,
     RtspBridgeSink,
@@ -42,6 +44,8 @@ class OverlayPipeline:
 
         self.source: Optional[SrtMpegTsSource] = None
         self.video_decode: Optional[VideoDecodeBranch] = None
+        self.browser_overlay: Optional[BrowserOverlaySourceBranch] = None
+        self.compositor: Optional[CompositorBranch] = None
         self.scoreboard: Optional[ScoreboardOverlayBranch] = None
         self.video_encode: Optional[VideoEncodeBranch] = None
         self.audio: Optional[AacPassthroughBranch] = None
@@ -57,6 +61,9 @@ class OverlayPipeline:
 
         self.source = SrtMpegTsSource(c.source)
         self.video_decode = VideoDecodeBranch(c.video_decode)
+        if c.browser_overlay.enabled:
+            self.browser_overlay = BrowserOverlaySourceBranch(c.browser_overlay)
+            self.compositor = CompositorBranch(c.browser_overlay)
         self.scoreboard = ScoreboardOverlayBranch(c.scoreboard)
         self.video_encode = VideoEncodeBranch(c.video_encode)
         self.audio = AacPassthroughBranch(c.audio)
@@ -85,6 +92,8 @@ class OverlayPipeline:
             self.mux,
             self.tee,
         ]
+        if self.browser_overlay is not None and self.compositor is not None:
+            non_sink_branches.extend([self.browser_overlay, self.compositor])
         all_branches: list[Branch] = non_sink_branches + self.sinks
 
         # Phase 1: build (create + configure elements).
@@ -101,8 +110,19 @@ class OverlayPipeline:
 
         # Phase 4: inter-branch static links.
         ok = Gst.PadLinkReturn.OK
-        if self.video_decode.output_pad.link(self.scoreboard.input_pad) != ok:
-            raise RuntimeError("video_decode → scoreboard link failed")
+        if self.compositor is not None:
+            # Browser overlay enabled: route video_decode and browser_overlay
+            # through the compositor before handing off to the scoreboard.
+            assert self.browser_overlay is not None
+            if self.video_decode.output_pad.link(self.compositor.request_video_pad()) != ok:
+                raise RuntimeError("video_decode → compositor.sink_0 link failed")
+            if self.browser_overlay.output_pad.link(self.compositor.request_overlay_pad()) != ok:
+                raise RuntimeError("browser_overlay → compositor.sink_1 link failed")
+            if self.compositor.output_pad.link(self.scoreboard.input_pad) != ok:
+                raise RuntimeError("compositor → scoreboard link failed")
+        else:
+            if self.video_decode.output_pad.link(self.scoreboard.input_pad) != ok:
+                raise RuntimeError("video_decode → scoreboard link failed")
         if self.scoreboard.output_pad.link(self.video_encode.input_pad) != ok:
             raise RuntimeError("scoreboard → video_encode link failed")
         if self.video_encode.output_pad.link(self.mux.request_video_pad()) != ok:

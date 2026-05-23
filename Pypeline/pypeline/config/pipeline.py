@@ -5,6 +5,7 @@ import yaml
 from pydantic import BaseModel, ConfigDict, Field
 
 from .audio import AudioBranchConfig
+from .browser_overlay import BrowserOverlayConfig
 from .mux import MuxConfig
 from .rtsp import RtspServerConfig
 from .scoreboard import ScoreboardConfig
@@ -22,6 +23,7 @@ class PipelineConfig(BaseModel):
     video_decode: VideoDecodeBranchConfig = Field(default_factory=VideoDecodeBranchConfig)
     video_encode: VideoEncodeBranchConfig
     scoreboard: ScoreboardConfig = Field(default_factory=ScoreboardConfig)
+    browser_overlay: BrowserOverlayConfig = Field(default_factory=BrowserOverlayConfig)
     audio: AudioBranchConfig = Field(default_factory=AudioBranchConfig)
     mux: MuxConfig = Field(default_factory=MuxConfig)
     sinks: SinksConfig

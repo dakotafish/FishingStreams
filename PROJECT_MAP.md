@@ -50,11 +50,12 @@ flowchart LR
                 CfgSource["source.py"]
                 CfgVideo["video.py (Decode + Encode configs)"]
                 CfgScoreboard["scoreboard.py"]
+                CfgBrowserOverlay["browser_overlay.py"]
                 CfgAudio["audio.py"]
                 CfgMux["mux.py"]
                 CfgSinks["sinks.py"]
                 CfgRtsp["rtsp.py"]
-                CfgPipeline --> CfgSource & CfgVideo & CfgScoreboard & CfgAudio & CfgMux & CfgSinks & CfgRtsp
+                CfgPipeline --> CfgSource & CfgVideo & CfgScoreboard & CfgBrowserOverlay & CfgAudio & CfgMux & CfgSinks & CfgRtsp
             end
 
             subgraph PypBranches["branches/ (Branch classes)"]
@@ -62,18 +63,20 @@ flowchart LR
                 BrSource["source.py (SrtMpegTsSource)"]
                 BrVideo["video.py (VideoDecodeBranch + VideoEncodeBranch)"]
                 BrScoreboard["scoreboard.py (ScoreboardOverlayBranch)"]
+                BrBrowserOverlay["browser_overlay.py (BrowserOverlaySourceBranch)"]
+                BrCompositor["compositor.py (CompositorBranch)"]
                 BrAudio["audio.py (AacPassthroughBranch)"]
                 BrMux["mux.py (MpegTsMuxBranch)"]
                 BrTee["tee.py (TeeFanout)"]
                 BrSinks["sinks.py (4 sink classes)"]
-                BrSource & BrVideo & BrScoreboard & BrAudio & BrMux & BrTee & BrSinks --> BrBase
+                BrSource & BrVideo & BrScoreboard & BrBrowserOverlay & BrCompositor & BrAudio & BrMux & BrTee & BrSinks --> BrBase
             end
 
             subgraph PypOverlays["overlays/ (pure-Python renderers)"]
                 OvScoreboard["scoreboard_renderer.py"]
             end
 
-            PypPipeline --> BrSource & BrVideo & BrScoreboard & BrAudio & BrMux & BrTee & BrSinks
+            PypPipeline --> BrSource & BrVideo & BrScoreboard & BrBrowserOverlay & BrCompositor & BrAudio & BrMux & BrTee & BrSinks
             PypPipeline --> PypMtx --> CfgSource
             PypPipeline --> PypRtsp --> CfgRtsp
             BrSource --> CfgSource
@@ -81,12 +84,20 @@ flowchart LR
             BrScoreboard --> CfgScoreboard
             BrScoreboard --> OvScoreboard
             OvScoreboard --> CfgScoreboard
+            BrBrowserOverlay --> CfgBrowserOverlay
+            BrCompositor --> CfgBrowserOverlay
             BrAudio --> CfgAudio
             BrMux --> CfgMux
             BrTee --> CfgSinks
             BrSinks --> CfgSinks
             BrSinks -.uses.-> PypRtsp
         end
+
+        PypSupervisor["supervisord.conf<br/>(Xvfb · overlay-server · Chromium · gstreamer)"]
+        PypOverlayServer["overlay_server.py<br/>(serves /overlays on :8080)"]
+        PypDocker --> PypSupervisor
+        PypDocker --> PypOverlayServer
+        PypSupervisor -.launches.-> PypEntry
 
         PypEntry --> CfgPipeline
         PypEntry --> PypPipeline
@@ -101,9 +112,11 @@ flowchart LR
         StackMtxDocker["mediamtx/Dockerfile"]
         StackMtxYml["mediamtx/mediamtx.yml"]
         StackSvg["overlays/placeholder.svg"]
+        StackCatch["overlays/catch-counter.html"]
         StackCompose --> StackMtxDocker --> StackMtxYml
         StackCompose -.builds.-> PypDocker
         StackCompose --> StackSvg
+        StackCompose --> StackCatch
     end
 
     Phone -- "SRT push (publish:boat1)" --> MVPMtxYml
@@ -188,7 +201,9 @@ so typos crash at startup.
 | Path | Purpose |
 |---|---|
 | `main.py` | CLI entrypoint. `argparse` for `--config`, then `PipelineConfig.from_yaml(...)` → `OverlayPipeline(config).run()`. Defaults to `configs/boat1.yaml`. |
-| `Dockerfile` | Ubuntu 24.04 + same GStreamer plugin set as the MVP, plus `pip install pydantic>=2 pyyaml>=6` (Ubuntu's apt-shipped `python3-pydantic` is v1, hence pip + `--break-system-packages`). Copies the package and configs in; entrypoint is `python3 /app/main.py`. |
+| `overlay_server.py` | Static-file HTTP server (stdlib `http.server`) launched by supervisord to serve `/overlays` on `:8080`. Chromium loads `http://localhost:8080/catch-counter.html` against it for the browser-overlay branch. |
+| `supervisord.conf` | Container process manager. Owns four long-running programs: `Xvfb :99`, `overlay-server`, `chromium` (kiosk, waits for Xvfb), and the Python pipeline. The Chromium wrapper polls `xdpyinfo` until Xvfb's display socket is up to avoid a first-start race. |
+| `Dockerfile` | Ubuntu 24.04 + GStreamer plugin set + `pip install pydantic>=2 pyyaml>=6`. Adds the xtradeb PPA to apt-install a real (non-Snap) Chromium, plus `xvfb` and `supervisor` for the browser-overlay stack. `CMD` is `supervisord -c /etc/supervisor/conf.d/supervisord.conf`. |
 | `pyproject.toml` | Package metadata. Declares `pydantic`, `pyyaml`, and `PyGObject` as deps and configures `setuptools` to auto-discover the `pypeline*` subpackages. |
 | `.dockerignore` | Keeps `venv/`, `__pycache__/`, and `reference/` out of the build context. |
 
@@ -230,6 +245,7 @@ so YAML typos raise at validation time rather than being silently ignored.
 | `source.py` | `SourceConfig` (SRT URI, latency) and `MediaMtxWaitConfig` (api_url, path_name, poll/timeout/request-timeout settings). |
 | `video.py` | `VideoDecodeBranchConfig` (currently empty; output is fixed BGRA), `VideoEncodeBranchConfig` (overlay path, raw format, H.264 stream-format and alignment, h264parse `config-interval`), and `EncoderConfig` (x264enc bitrate, GOP, B-frames, `tune`, `speed-preset`). Field docstrings record the *why* — e.g. why I420 is forced and why `byte-stream + au` is required for the mux. |
 | `scoreboard.py` | `ScoreboardConfig` (enabled flag, scroll speed, strip geometry, font, colors) and `AnglerEntry` (rank/name/points). The angler list lives in YAML; the renderer in `overlays/scoreboard_renderer.py` consumes this config. |
+| `browser_overlay.py` | `BrowserOverlayConfig` — toggle (`enabled: false` default) plus ximagesrc tunables (`display_name`, `framerate`, `capture_endx/endy`). Xvfb resolution and the Chromium URL are owned by `supervisord.conf`, not the YAML, since they're identical across boats. |
 | `audio.py` | `AudioBranchConfig` — currently empty model; passthrough has no tunables. |
 | `mux.py` | `MuxConfig` — `alignment` (defaults to 7 packets so `mpegtsmux` emits 1316-byte buffers, matching SRT's MTU). |
 | `sinks.py` | `SinksConfig` — container for all four sink configs plus `TeeQueueConfig`. Each sink has its own model with an `enabled` flag: `SrtPublisherSinkConfig`, `FileRecorderSinkConfig`, `SrtListenerSinkConfig`, `RtspBridgeSinkConfig` (which nests `RtspBridgeAppsinkConfig`). |
@@ -249,6 +265,8 @@ omit `input_pad`; sinks omit `output_pad`; the mux uses request pads instead.
 | `source.py` | `SrtMpegTsSource` — `srtsrc` → `tsdemux`. Exposes `on_video_pad()` / `on_audio_pad()` so the orchestrator can register pad callbacks; central `pad-added` handler dispatches on caps media-type. |
 | `video.py` | `VideoDecodeBranch` (`h265parse → avdec_h265 → videoconvert → capsfilter(BGRA)`) and `VideoEncodeBranch` (`videoconvert → rsvgoverlay → videoconvert → capsfilter(I420) → x264enc → h264parse → capsfilter(byte-stream/au) → queue`). Split from a single class so the scoreboard cairo overlay can sit between the two without coupling decode and encode. |
 | `scoreboard.py` | `ScoreboardOverlayBranch` — single-element branch wrapping `cairooverlay`. GStreamer glue only; delegates pixel work to `ScoreboardRenderer` in `overlays/`. Advances scroll position from the buffer timestamp so scroll speed is frame-rate-independent. |
+| `browser_overlay.py` | `BrowserOverlaySourceBranch` — source-only branch: `ximagesrc(use-damage=false, DISPLAY=:99) → videoconvert → alpha(method=green) → videoconvert → capsfilter(RGBA, fps) → queue`. Captures the in-container Xvfb display Chromium is rendering, chroma-keys out the #00ff00 page background to produce real alpha, and feeds `CompositorBranch.sink_1`. |
+| `compositor.py` | `CompositorBranch` — `compositor → videoconvert → capsfilter(BGRA)`. Two request pads: `sink_0` (zorder=0, main video) and `sink_1` (zorder=1, browser overlay, alpha=1.0). Output is BGRA so the downstream cairooverlay scoreboard keeps working unchanged. Only instantiated when `browser_overlay.enabled`. |
 | `audio.py` | `AacPassthroughBranch` — `aacparse → queue`. No decode/re-encode. |
 | `mux.py` | `MpegTsMuxBranch` — wraps `mpegtsmux`. Exposes `request_video_pad()` / `request_audio_pad()` that allocate `sink_%d` request pads. |
 | `tee.py` | `TeeFanout` — wraps `tee`. `attach_sink(sink)` lazily creates a queue per sink (with `TeeQueueConfig` limits) so a slow sink can't back-pressure the others. |
@@ -295,6 +313,7 @@ two can move independently.
 | Path | Purpose |
 |---|---|
 | `placeholder.svg` | Mounted read-only into the gstreamer container at `/overlays/placeholder.svg` (the path `boat1.yaml`'s `video.overlay_path` resolves to). |
+| `catch-counter.html` | Self-contained HTML overlay rendered by the in-container Chromium when `browser_overlay.enabled` is true. Polls a remote API for catch counts (currently `143.198.8.166/api/count`) and animates fish jumping into slots. Body background is solid `#00ff00` — chroma-keyed out by `BrowserOverlaySourceBranch`'s `alpha method=green` element. (The `BrowserSources/` copy used by OBS keeps `background: transparent`.) |
 
 ### `pypeline-stack/logs/`
 Runtime-only output volumes for `mediamtx/` and `gstreamer/`. `.gitignore`d.

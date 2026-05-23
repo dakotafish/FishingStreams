@@ -38,6 +38,7 @@ services:
       - GST_DEBUG=3
       - GST_DEBUG_FILE=/logs/gst.log
       - GST_DEBUG_NO_COLOR=1
+      - DISPLAY=:99   # Xvfb display number, must match Pypeline/supervisord.conf
     volumes:
       - ./logs/gstreamer:/logs
       - ./overlays:/overlays:ro

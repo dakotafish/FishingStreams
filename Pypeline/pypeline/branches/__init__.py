@@ -1,5 +1,7 @@
 from .audio import AacPassthroughBranch
 from .base import Branch, make_element
+from .browser_overlay import BrowserOverlaySourceBranch
+from .compositor import CompositorBranch
 from .mux import MpegTsMuxBranch
 from .scoreboard import ScoreboardOverlayBranch
 from .sinks import (
@@ -15,6 +17,8 @@ from .video import VideoDecodeBranch, VideoEncodeBranch
 __all__ = [
     "AacPassthroughBranch",
     "Branch",
+    "BrowserOverlaySourceBranch",
+    "CompositorBranch",
     "FileRecorderSink",
     "MpegTsMuxBranch",
     "RtspBridgeSink",
